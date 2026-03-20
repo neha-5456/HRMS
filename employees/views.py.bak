@@ -1,0 +1,66 @@
+from rest_framework import viewsets, status, filters
+from rest_framework.decorators import action
+from rest_framework.response import Response
+from rest_framework.permissions import IsAuthenticated
+from django_filters.rest_framework import DjangoFilterBackend
+from .models import Employee, EducationRecord, WorkExperience
+from .serializers import (
+    EmployeeListSerializer,
+    EmployeeDetailSerializer,
+    EmployeeCreateSerializer,
+    EducationRecordSerializer,
+    WorkExperienceSerializer
+)
+
+class EmployeeViewSet(viewsets.ModelViewSet):
+    queryset = Employee.objects.select_related('user', 'department', 'position', 'manager').all()
+    permission_classes = [IsAuthenticated]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_fields = ['department', 'position', 'employment_type', 'is_active']
+    search_fields = ['employee_id', 'user__first_name', 'user__last_name', 'user__email']
+    ordering_fields = ['employee_id', 'date_of_joining', 'created_at']
+    ordering = ['-created_at']
+    
+    def get_serializer_class(self):
+        if self.action == 'list':
+            return EmployeeListSerializer
+        elif self.action == 'create':
+            return EmployeeCreateSerializer
+        return EmployeeDetailSerializer
+    
+    @action(detail=True, methods=['get'])
+    def subordinates(self, request, pk=None):
+        employee = self.get_object()
+        subordinates = Employee.objects.filter(manager=employee)
+        serializer = EmployeeListSerializer(subordinates, many=True)
+        return Response(serializer.data)
+    
+    @action(detail=True, methods=['post'])
+    def deactivate(self, request, pk=None):
+        employee = self.get_object()
+        employee.is_active = False
+        employee.date_of_leaving = request.data.get('date_of_leaving')
+        employee.save()
+        return Response({'status': 'employee deactivated'})
+    
+    @action(detail=True, methods=['post'])
+    def activate(self, request, pk=None):
+        employee = self.get_object()
+        employee.is_active = True
+        employee.date_of_leaving = None
+        employee.save()
+        return Response({'status': 'employee activated'})
+
+class EducationRecordViewSet(viewsets.ModelViewSet):
+    queryset = EducationRecord.objects.all()
+    serializer_class = EducationRecordSerializer
+    permission_classes = [IsAuthenticated]
+    filter_backends = [DjangoFilterBackend]
+    filterset_fields = ['employee', 'degree']
+
+class WorkExperienceViewSet(viewsets.ModelViewSet):
+    queryset = WorkExperience.objects.all()
+    serializer_class = WorkExperienceSerializer
+    permission_classes = [IsAuthenticated]
+    filter_backends = [DjangoFilterBackend]
+    filterset_fields = ['employee']
